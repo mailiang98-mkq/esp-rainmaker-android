@@ -2,25 +2,47 @@ name: Android CI
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ main, develop ]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
+    
     steps:
-    - uses: actions/checkout@v4
-    - name: set up JDK 11
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    # 关键点：升级为JDK 17（满足插件要求）
+    - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
-        java-version: '11'
+        java-version: '17'  # 必须是17或更高
         distribution: 'temurin'
         cache: gradle
 
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
+
+    - name: Create local.properties
+      env:
+        LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+      run: |
+        echo "$LOCAL_PROPERTIES" > local.properties
+        # 如果不需要Firebase，可设置isChinaRegion=true跳过：
+        # echo "isChinaRegion=true" >> local.properties
+
     - name: Build with Gradle
-      run: ./gradlew clean  build
+      run: ./gradlew assembleDebug --stacktrace
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: app/build/outputs/apk/debug/*.apk
