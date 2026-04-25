@@ -81,6 +81,7 @@ class AppConstants {
         const val SERVICE_TYPE_SYSTEM = "esp.service.system"
         const val SERVICE_TYPE_MATTER_CONTROLLER = "esp.service.matter-controller"
         const val SERVICE_TYPE_RMAKER_CONTROLLER = "esp.service.rmaker-user-auth"
+        const val SERVICE_TYPE_MATTER_CONTROLLER_SETUP = "esp.service.matter-controller-setup"
         const val SERVICE_TYPE_TBR = "esp.service.thread-br"
 
         // Param Types
@@ -114,6 +115,7 @@ class AppConstants {
         const val PARAM_TYPE_BASE_URL = "esp.param.base-url"
         const val PARAM_TYPE_USER_TOKEN = "esp.param.user-token"
         const val PARAM_TYPE_RMAKER_GROUP_ID = "esp.param.rmaker-group-id"
+        const val PARAM_TYPE_GROUP_ID = "esp.param.group-id"
         const val PARAM_TYPE_MATTER_NODE_ID = "esp.param.matter-node-id"
         const val PARAM_TYPE_MATTER_CTL_CMD = "esp.param.matter-ctl-cmd"
         const val PARAM_TYPE_MATTER_CTL_STATUS = "esp.param.matter-ctl-status"
@@ -135,6 +137,7 @@ class AppConstants {
         const val PARAM_BASE_URL = "BaseURL"
         const val PARAM_USER_TOKEN = "UserToken"
         const val PARAM_RMAKER_GROUP_ID = "RMakerGroupID"
+        const val PARAM_GROUP_ID = "GroupID"
         const val PARAM_BORDER_AGENT_ID = "Border Agent ID"
         const val PARAM_ACTIVE_DATASET = "Active Dataset"
         const val PARAM_PENDING_DATASET = "Pending Dataset"
@@ -176,11 +179,15 @@ class AppConstants {
 
         /* RainMaker Extra Capabilities */
         const val CAPABILITY_CHALLENGE_RESP = "ch_resp"
+        const val CAPABILITY_LOCAL_CTRL = "local_ctrl"
 
         // Device End point names
         const val HANDLER_RM_USER_MAPPING = "cloud_user_assoc"
         const val HANDLER_RM_CLAIM = "rmaker_claim"
         const val HANDLER_RM_CH_RESP = "ch_resp"
+        const val HANDLER_GET_CONFIG = "get_config"
+        const val HANDLER_GET_PARAMS = "get_params"
+        const val HANDLER_SET_PARAMS = "set_params"
 
         /* Notification related constants */
 
@@ -282,6 +289,9 @@ class AppConstants {
         const val URL_USER_NODE_GROUP_SHARING_REQUESTS = "/user/node_group/sharing/requests"
         const val URL_USER_MAPPING_INITIATE = "/user/nodes/mapping/initiate"
         const val URL_USER_MAPPING_VERIFY = "/user/nodes/mapping/verify"
+        const val URL_USER_NODES_PROXY_CONFIG = "/user/nodes/{node_id}/proxy/config"
+        const val URL_USER_NODES_PROXY_PARAMS = "/user/nodes/{node_id}/proxy/params"
+        const val URL_USER_NODES_PROXY_INITPARAMS = "/user/nodes/{node_id}/proxy/initparams"
 
         const val URL_ASSUME_ROLE = "/user/assume_role"
         
@@ -320,6 +330,7 @@ class AppConstants {
         const val KEY_BOUNDS = "bounds"
         const val KEY_SELECTED_DEVICES = "selected_devices"
         const val KEY_MATTER_CTL = "MatterCTL"
+        const val KEY_MATTER_CTL_SETUP = "MatterCTLSetup"
         const val KEY_RMAKER_CTL = "RmakerCTL"
 
         const val KEY_SUPPORTED_VERSIONS = "supported_versions"
@@ -451,6 +462,7 @@ class AppConstants {
         const val KEY_PROOF_OF_POSSESSION = "proof_of_possession"
         const val KEY_DEVICE_NAME = "device_name"
         const val KEY_ESP_DEVICE = "esp_device"
+        const val KEY_IS_BLE_SINGLE_DEVICE = "is_ble_single_device"
         const val KEY_NODE_ID = "node_id"
         const val KEY_NODE_TYPE = "node_type"
         const val KEY_EMAIL = "email"
@@ -532,8 +544,10 @@ class AppConstants {
         const val KEY_DEPENDENCIES = "dependencies"
         const val KEY_IS_RAINMAKER_NODE = "is_rainmaker_node"
         const val KEY_IS_CTRL_SERVICE = "isCtrlService"
+        const val KEY_IS_CTRL_SETUP_SERVICE = "isCtrlSetupService"
         const val KEY_IS_RMAKER_CONTROLLER = "is_rmaker_controller"
         const val KEY_IS_CAMERA_CLAIM = "is_camera_claim"
+        const val KEY_BLE_LOCAL_CTRL = "ble_local_ctrl"
 
         const val CERT_BEGIN = "-----BEGIN CERTIFICATE REQUEST-----"
         const val CERT_END = "-----END CERTIFICATE REQUEST-----"
@@ -574,6 +588,8 @@ class AppConstants {
         const val NODE_STATUS_LOCAL = 3;
         const val NODE_STATUS_MATTER_LOCAL = 4;
         const val NODE_STATUS_REMOTELY_CONTROLLABLE = 5;
+        const val NODE_STATUS_BLE_LOCAL = 6;
+        const val NODE_STATUS_BLE_DISCOVERABLE = 7;
 
         const val HEX_PREFIX = "0x"
 

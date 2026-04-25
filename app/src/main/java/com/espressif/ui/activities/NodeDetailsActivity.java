@@ -34,6 +34,8 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.espressif.AppConstants;
 import com.espressif.EspApplication;
+import com.espressif.NetworkApiManager;
+import com.espressif.ble.BleLocalControlManager;
 import com.espressif.cloudapi.ApiManager;
 import com.espressif.cloudapi.ApiResponseListener;
 import com.espressif.cloudapi.CloudException;
@@ -47,10 +49,10 @@ import com.espressif.ui.models.SharingRequest;
 import com.espressif.utils.NodeUtils;
 import com.google.android.material.appbar.MaterialToolbar;
 
-import java.util.ArrayList;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.util.ArrayList;
 
 public class NodeDetailsActivity extends AppCompatActivity {
 
@@ -172,8 +174,8 @@ public class NodeDetailsActivity extends AppCompatActivity {
                     for (int i = 0; i < attributes.length(); i++) {
                         JSONObject attribute = attributes.getJSONObject(i);
                         if (attribute.has("name") && attribute.has("value") &&
-                            "cmd-resp".equals(attribute.getString("name")) &&
-                            "1".equals(attribute.getString("value"))) {
+                                "cmd-resp".equals(attribute.getString("name")) &&
+                                "1".equals(attribute.getString("value"))) {
                             nodeInfoList.add(getString(R.string.node_cmd_resp));
                             nodeInfoValueList.add(getString(R.string.btn_send_cmd));
                             break;
@@ -250,6 +252,17 @@ public class NodeDetailsActivity extends AppCompatActivity {
         if (systemService != null) {
             nodeInfoList.add(getString(R.string.system_services));
             nodeInfoValueList.add(getString(R.string.system_services));
+        }
+
+        // Wi-Fi Provisioning via BLE (only when BLE-connected and device supports it)
+        BleLocalControlManager bleManager = BleLocalControlManager.getInstance(this);
+        if (bleManager.isConnected(nodeId)) {
+            ArrayList<String> caps = bleManager.getDeviceCapabilities(nodeId);
+            if (caps != null && (caps.contains(AppConstants.CAPABILITY_WIFI_SCAN)
+                    || caps.contains(AppConstants.CAPABILITY_WIFI_PROV))) {
+                nodeInfoList.add(getString(R.string.node_wifi_provisioning));
+                nodeInfoValueList.add(getString(R.string.btn_provision_wifi));
+            }
         }
 
         nodeDetailsAdapter.notifyDataSetChanged();
@@ -371,12 +384,18 @@ public class NodeDetailsActivity extends AppCompatActivity {
 
     private void removeDevice() {
 
+        // Capture controller setup nodes BEFORE the remove call, so we can ping them after success.
+        final ArrayList<String> ctlSetupNodeIds = node != null && node.isMatterNode()
+                ? findControllerSetupNodesForMatterDevice(node.getNodeId())
+                : new ArrayList<>();
+
         showLoading();
         apiManager.removeNode(node.getNodeId(), new ApiResponseListener() {
 
             @Override
             public void onSuccess(Bundle data) {
                 hideLoading();
+                sendUpdateDeviceListToNodes(ctlSetupNodeIds);
                 setResult(RESULT_OK);
                 finish();
             }
@@ -403,5 +422,66 @@ public class NodeDetailsActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    private ArrayList<String> findControllerSetupNodesForMatterDevice(String matterNodeId) {
+        ArrayList<String> result = new ArrayList<>();
+        if (espApp.groupMap == null || espApp.groupMap.isEmpty()) {
+            return result;
+        }
+
+        for (com.espressif.ui.models.Group group : espApp.groupMap.values()) {
+            if (group == null || group.getNodeList() == null) continue;
+            if (!group.getNodeList().contains(matterNodeId)) continue;
+
+            for (String nId : group.getNodeList()) {
+                if (TextUtils.equals(nId, matterNodeId)) continue;
+                if (result.contains(nId)) continue;
+                EspNode n = espApp.nodeMap.get(nId);
+                if (n == null) continue;
+                Service ctlSetupService = NodeUtils.Companion.getService(n, AppConstants.SERVICE_TYPE_MATTER_CONTROLLER_SETUP);
+                if (ctlSetupService != null) {
+                    result.add(nId);
+                }
+            }
+        }
+        return result;
+    }
+
+    private void sendUpdateDeviceListToNodes(ArrayList<String> nodeIds) {
+        if (nodeIds == null || nodeIds.isEmpty()) return;
+
+        NetworkApiManager networkApiManager = new NetworkApiManager(espApp);
+
+        for (final String nId : nodeIds) {
+            EspNode n = espApp.nodeMap.get(nId);
+            if (n == null) continue;
+            Service ctlSetupService = NodeUtils.Companion.getService(n, AppConstants.SERVICE_TYPE_MATTER_CONTROLLER_SETUP);
+            if (ctlSetupService == null) continue;
+
+            com.google.gson.JsonObject serviceParamJson = new com.google.gson.JsonObject();
+            serviceParamJson.addProperty("MTCtlCMD", 2);
+
+            String serviceName = !TextUtils.isEmpty(ctlSetupService.getName())
+                    ? ctlSetupService.getName()
+                    : AppConstants.KEY_MATTER_CTL_SETUP;
+
+            com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+            body.add(serviceName, serviceParamJson);
+
+            networkApiManager.updateParamValue(nId, body, new ApiResponseListener() {
+                @Override
+                public void onSuccess(Bundle data) {
+                }
+
+                @Override
+                public void onResponseFailure(Exception exception) {
+                }
+
+                @Override
+                public void onNetworkFailure(Exception exception) {
+                }
+            });
+        }
     }
 }

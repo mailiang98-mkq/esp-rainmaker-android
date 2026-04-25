@@ -25,6 +25,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -33,13 +34,13 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.recyclerview.widget.RecyclerView;
-import com.google.android.material.card.MaterialCardView;
 
 import com.aar.tapholdupbutton.TapHoldUpButton;
 import com.espressif.AppConstants;
 import com.espressif.ESPControllerAPIKeys;
 import com.espressif.EspApplication;
 import com.espressif.NetworkApiManager;
+import com.espressif.ble.BleLocalControlManager;
 import com.espressif.cloudapi.ApiResponseListener;
 import com.espressif.local_control.EspLocalDevice;
 import com.espressif.matter.ControllerLoginActivity;
@@ -54,6 +55,7 @@ import com.espressif.ui.models.EspNode;
 import com.espressif.ui.models.Param;
 import com.espressif.ui.models.Service;
 import com.espressif.utils.NodeUtils;
+import com.google.android.material.card.MaterialCardView;
 import com.google.gson.JsonObject;
 
 import java.math.BigInteger;
@@ -66,13 +68,15 @@ import java.util.Map;
 public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.DeviceViewHolder> {
 
     private Context context;
+    private EspApplication espApp;
     private NetworkApiManager networkApiManager;
     private ArrayList<Device> deviceList;
 
     public EspDeviceAdapter(Context context, ArrayList<Device> deviceList) {
         this.context = context;
         this.deviceList = deviceList;
-        networkApiManager = new NetworkApiManager(context.getApplicationContext());
+        espApp = (EspApplication) context.getApplicationContext();
+        networkApiManager = new NetworkApiManager(espApp);
     }
 
     @Override
@@ -88,7 +92,6 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
     public void onBindViewHolder(@NonNull final DeviceViewHolder deviceVh, final int position) {
 
         final Device device = deviceList.get(position);
-        EspApplication espApp = (EspApplication) context.getApplicationContext();
         EspNode node = espApp.nodeMap.get(device.getNodeId());
         String deviceName = device.getUserVisibleName();
         String nodeId = device.getNodeId();
@@ -114,6 +117,7 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
 
         deviceVh.tvDeviceName.setText(deviceName);
         Utils.setDeviceIcon(deviceVh.ivDevice, device.getDeviceType());
+        deviceVh.pbBleLoading.setVisibility(View.GONE);
 
         if (!TextUtils.isEmpty(device.getPrimaryParamName())) {
 
@@ -248,20 +252,46 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
                                         jsonParam.addProperty(param.getName(), !status);
                                         body.add(device.getDeviceName(), jsonParam);
 
+                                        BleLocalControlManager bleMgr = BleLocalControlManager.getInstance(context);
+                                        boolean needsBleConnect = !espApp.localDeviceMap.containsKey(nodeId)
+                                                && (bleMgr.isDiscovered(nodeId) && !bleMgr.isConnected(nodeId));
+                                        boolean isBleRoute = !espApp.localDeviceMap.containsKey(nodeId)
+                                                && (bleMgr.isConnected(nodeId) || bleMgr.isDiscovered(nodeId));
+
+                                        if (isBleRoute) {
+                                            param.setSwitchStatus(!status);
+                                        }
+                                        if (needsBleConnect) {
+                                            deviceVh.ivDeviceStatus.setVisibility(View.GONE);
+                                            deviceVh.pbBleLoading.setVisibility(View.VISIBLE);
+                                        }
+
                                         networkApiManager.updateParamValue(device.getNodeId(), body, new ApiResponseListener() {
 
                                             @Override
                                             public void onSuccess(Bundle data) {
-                                                param.setSwitchStatus(!status);
+                                                if (isBleRoute) {
+                                                    hideBleLoadingAndSetToggleIcon(deviceVh, !status);
+                                                } else {
+                                                    param.setSwitchStatus(!status);
+                                                }
                                             }
 
                                             @Override
                                             public void onResponseFailure(Exception exception) {
+                                                if (isBleRoute) {
+                                                    param.setSwitchStatus(status);
+                                                    hideBleLoadingAndSetToggleIcon(deviceVh, status);
+                                                }
                                                 Toast.makeText(context, R.string.error_param_update, Toast.LENGTH_SHORT).show();
                                             }
 
                                             @Override
                                             public void onNetworkFailure(Exception exception) {
+                                                if (isBleRoute) {
+                                                    param.setSwitchStatus(status);
+                                                    hideBleLoadingAndSetToggleIcon(deviceVh, status);
+                                                }
                                                 Toast.makeText(context, R.string.error_param_update, Toast.LENGTH_SHORT).show();
                                             }
                                         });
@@ -296,22 +326,7 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
                                 jsonParam.addProperty(param.getName(), true);
                                 body.add(device.getDeviceName(), jsonParam);
 
-                                networkApiManager.updateParamValue(device.getNodeId(), body, new ApiResponseListener() {
-
-                                    @Override
-                                    public void onSuccess(Bundle data) {
-                                    }
-
-                                    @Override
-                                    public void onResponseFailure(Exception exception) {
-                                        Toast.makeText(context, R.string.error_param_update, Toast.LENGTH_SHORT).show();
-                                    }
-
-                                    @Override
-                                    public void onNetworkFailure(Exception exception) {
-                                        Toast.makeText(context, R.string.error_param_update, Toast.LENGTH_SHORT).show();
-                                    }
-                                });
+                                sendTriggerParam(deviceVh, device, body, nodeStatus);
                             }
 
                             @Override
@@ -322,22 +337,7 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
                                 jsonParam.addProperty(param.getName(), true);
                                 body.add(device.getDeviceName(), jsonParam);
 
-                                networkApiManager.updateParamValue(device.getNodeId(), body, new ApiResponseListener() {
-
-                                    @Override
-                                    public void onSuccess(Bundle data) {
-                                    }
-
-                                    @Override
-                                    public void onResponseFailure(Exception exception) {
-                                        Toast.makeText(context, R.string.error_param_update, Toast.LENGTH_SHORT).show();
-                                    }
-
-                                    @Override
-                                    public void onNetworkFailure(Exception exception) {
-                                        Toast.makeText(context, R.string.error_param_update, Toast.LENGTH_SHORT).show();
-                                    }
-                                });
+                                sendTriggerParam(deviceVh, device, body, nodeStatus);
                             }
                         });
                     } else {
@@ -446,7 +446,9 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
         }
 
         if (node != null && !node.isOnline() && nodeStatus != AppConstants.NODE_STATUS_MATTER_LOCAL
-                && nodeStatus != AppConstants.NODE_STATUS_REMOTELY_CONTROLLABLE) {
+                && nodeStatus != AppConstants.NODE_STATUS_REMOTELY_CONTROLLABLE
+                && nodeStatus != AppConstants.NODE_STATUS_BLE_LOCAL
+                && nodeStatus != AppConstants.NODE_STATUS_BLE_DISCOVERABLE) {
 
             deviceVh.itemView.setAlpha(0.8f);
             deviceVh.ivDeviceStatus.setImageResource(R.drawable.ic_output_disable);
@@ -538,10 +540,25 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
                 }
                 break;
 
+
             case AppConstants.NODE_STATUS_REMOTELY_CONTROLLABLE:
                 deviceVh.llOffline.setVisibility(View.VISIBLE);
                 deviceVh.ivOffline.setVisibility(View.GONE);
                 deviceVh.tvOffline.setText(R.string.status_remote);
+                deviceVh.tvOffline.setTextColor(context.getColor(R.color.colorPrimaryDark));
+                break;
+
+            case AppConstants.NODE_STATUS_BLE_LOCAL:
+                deviceVh.llOffline.setVisibility(View.VISIBLE);
+                deviceVh.ivOffline.setVisibility(View.GONE);
+                deviceVh.tvOffline.setText(R.string.ble_device_text);
+                deviceVh.tvOffline.setTextColor(context.getColor(R.color.colorPrimaryDark));
+                break;
+
+            case AppConstants.NODE_STATUS_BLE_DISCOVERABLE:
+                deviceVh.llOffline.setVisibility(View.VISIBLE);
+                deviceVh.ivOffline.setVisibility(View.GONE);
+                deviceVh.tvOffline.setText(R.string.ble_device_text);
                 deviceVh.tvOffline.setTextColor(context.getColor(R.color.colorPrimaryDark));
                 break;
 
@@ -587,9 +604,7 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
                 }
 
                 if (isMatterController && !isMatterCtrlSetupDone) {
-                    controllerNeedsAccessWarning(rmNodeId, R.string.dialog_msg_matter_controller, false);
-                } else if (isCtlServiceAvailable && matterNodeIdParamAvailable && !hasUserToken) {
-                    controllerNeedsAccessWarning(rmNodeId, R.string.dialog_msg_controller, true);
+                    controllerNeedsAccessWarning(rmNodeId, R.string.dialog_msg_matter_controller, false, false);
                 } else {
                     Intent intent = new Intent(context, EspDeviceActivity.class);
                     intent.putExtra(AppConstants.KEY_ESP_DEVICE, device);
@@ -609,7 +624,7 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
         notifyDataSetChanged();
     }
 
-    private void controllerNeedsAccessWarning(String rmNodeId, int strResId, boolean isCtrlService) {
+    private void controllerNeedsAccessWarning(String rmNodeId, int strResId, boolean isCtrlService, boolean isRmakerController) {
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setCancelable(true);
@@ -621,17 +636,47 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 dialog.dismiss();
-                Intent intent = new Intent(context, ControllerLoginActivity.class);
-                if (isCtrlService) {
+                Param groupIdParam = findGroupIdParam(rmNodeId);
+                boolean shouldOpenGroupSelection = groupIdParam != null && TextUtils.isEmpty(groupIdParam.getLabelValue());
+
+                Intent intent;
+                if (shouldOpenGroupSelection) {
                     intent = new Intent(context, GroupSelectionActivity.class);
+                } else {
+                    intent = new Intent(context, ControllerLoginActivity.class);
                 }
                 intent.putExtra(AppConstants.KEY_NODE_ID, rmNodeId);
                 intent.putExtra(AppConstants.KEY_IS_CTRL_SERVICE, isCtrlService);
+                intent.putExtra(AppConstants.KEY_IS_RMAKER_CONTROLLER, isRmakerController);
                 context.startActivity(intent);
             }
         });
 
         builder.show();
+    }
+
+    private Param findGroupIdParam(String nodeId) {
+        EspNode node = espApp.nodeMap.get(nodeId);
+        if (node == null) return null;
+
+        Service[] services = new Service[]{
+                NodeUtils.Companion.getService(node, AppConstants.SERVICE_TYPE_MATTER_CONTROLLER),
+                NodeUtils.Companion.getService(node, AppConstants.SERVICE_TYPE_RMAKER_CONTROLLER),
+                NodeUtils.Companion.getService(node, AppConstants.SERVICE_TYPE_MATTER_CONTROLLER_SETUP)
+        };
+
+        for (Service service : services) {
+            if (service == null) continue;
+            ArrayList<Param> params = service.getParams();
+            if (params == null) continue;
+            for (Param param : params) {
+                String type = param.getParamType();
+                if (AppConstants.PARAM_TYPE_RMAKER_GROUP_ID.equals(type) || AppConstants.PARAM_TYPE_GROUP_ID.equals(type)) {
+                    return param;
+                }
+            }
+        }
+        return null;
     }
 
     private String setDeviceNameFromType(String deviceType) {
@@ -705,6 +750,58 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
         return name;
     }
 
+    /** Hides BLE progress and shows the on/off icon for the primary toggle after a BLE param update. */
+    private static void hideBleLoadingAndSetToggleIcon(DeviceViewHolder deviceVh, boolean switchOn) {
+        deviceVh.pbBleLoading.setVisibility(View.GONE);
+        deviceVh.ivDeviceStatus.setVisibility(View.VISIBLE);
+        if (switchOn) {
+            deviceVh.ivDeviceStatus.setImageResource(R.drawable.ic_output_on);
+        } else {
+            deviceVh.ivDeviceStatus.setImageResource(R.drawable.ic_output_off);
+        }
+    }
+
+    private void sendTriggerParam(DeviceViewHolder deviceVh, Device device, JsonObject body, int nodeStatus) {
+        EspApplication espApp = (EspApplication) context.getApplicationContext();
+        String nodeId = device.getNodeId();
+        BleLocalControlManager bleMgr = BleLocalControlManager.getInstance(context);
+        boolean isBleRoute = !espApp.localDeviceMap.containsKey(nodeId)
+                && (bleMgr.isConnected(nodeId) || bleMgr.isDiscovered(nodeId));
+
+        if (isBleRoute) {
+            deviceVh.btnTrigger.setVisibility(View.GONE);
+            deviceVh.pbBleLoading.setVisibility(View.VISIBLE);
+        }
+
+        networkApiManager.updateParamValue(nodeId, body, new ApiResponseListener() {
+            @Override
+            public void onSuccess(Bundle data) {
+                if (isBleRoute) {
+                    deviceVh.pbBleLoading.setVisibility(View.GONE);
+                    deviceVh.btnTrigger.setVisibility(View.VISIBLE);
+                }
+            }
+
+            @Override
+            public void onResponseFailure(Exception exception) {
+                if (isBleRoute) {
+                    deviceVh.pbBleLoading.setVisibility(View.GONE);
+                    deviceVh.btnTrigger.setVisibility(View.VISIBLE);
+                }
+                Toast.makeText(context, R.string.error_param_update, Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onNetworkFailure(Exception exception) {
+                if (isBleRoute) {
+                    deviceVh.pbBleLoading.setVisibility(View.GONE);
+                    deviceVh.btnTrigger.setVisibility(View.VISIBLE);
+                }
+                Toast.makeText(context, R.string.error_param_update, Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
     /**
      * Set card background color for device status (dark theme only)
      */
@@ -712,13 +809,15 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
         // Check if we're in dark theme
         int nightModeFlags = context.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
         boolean isDarkTheme = nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-        
+
         if (isDarkTheme) {
             // Only apply background color changes in dark theme
-            boolean isOnline = (node != null && node.isOnline()) || 
-                             nodeStatus == AppConstants.NODE_STATUS_MATTER_LOCAL ||
-                             nodeStatus == AppConstants.NODE_STATUS_REMOTELY_CONTROLLABLE;
-            
+            boolean isOnline = (node != null && node.isOnline()) ||
+                    nodeStatus == AppConstants.NODE_STATUS_MATTER_LOCAL ||
+                    nodeStatus == AppConstants.NODE_STATUS_REMOTELY_CONTROLLABLE ||
+                    nodeStatus == AppConstants.NODE_STATUS_BLE_LOCAL ||
+                    nodeStatus == AppConstants.NODE_STATUS_BLE_DISCOVERABLE;
+
             if (isOnline) {
                 // Online devices get a slightly lighter background
                 deviceVh.cardView.setCardBackgroundColor(context.getColor(R.color.device_online_background));
@@ -737,6 +836,7 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
         RelativeLayout llOffline;
         TapHoldUpButton btnTrigger;
         MaterialCardView cardView;
+        ProgressBar pbBleLoading;
 
         public DeviceViewHolder(View itemView) {
             super(itemView);
@@ -751,6 +851,7 @@ public class EspDeviceAdapter extends RecyclerView.Adapter<EspDeviceAdapter.Devi
             tvStringValue = itemView.findViewById(R.id.tv_string);
             btnTrigger = itemView.findViewById(R.id.btn_trigger);
             cardView = (MaterialCardView) itemView;
+            pbBleLoading = itemView.findViewById(R.id.pb_ble_loading);
         }
     }
 }

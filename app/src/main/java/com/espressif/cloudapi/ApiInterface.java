@@ -362,6 +362,9 @@ public interface ApiInterface {
 
     // Matter APIs
     @PUT
+    Call<ResponseBody> addControllerToGroup(@Url String url, @Header(AppConstants.HEADER_AUTHORIZATION) String token, @Body JsonObject body);
+
+    @PUT
     Call<ResponseBody> convertGroupToFabric(@Url String url, @Header(AppConstants.HEADER_AUTHORIZATION) String token,
                                             @Query(AppConstants.KEY_GROUP_ID) String groupId,
                                             @Body JsonObject body);
@@ -378,4 +381,17 @@ public interface ApiInterface {
     @POST
     Call<ResponseBody> assumeRole(@Url String url, @Header(AppConstants.HEADER_AUTHORIZATION) String token,
                                   @Body JsonObject body);
+
+    // Proxy APIs for BLE local control
+    @POST
+    Call<ResponseBody> reportProxyConfig(@Url String url, @Header(AppConstants.HEADER_AUTHORIZATION) String token,
+                                         @Body JsonObject body);
+
+    @POST
+    Call<ResponseBody> reportProxyParams(@Url String url, @Header(AppConstants.HEADER_AUTHORIZATION) String token,
+                                         @Body JsonObject body);
+
+    @POST
+    Call<ResponseBody> reportProxyInitParams(@Url String url, @Header(AppConstants.HEADER_AUTHORIZATION) String token,
+                                             @Body JsonObject body);
 }
